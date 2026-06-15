@@ -142,7 +142,8 @@ src/
 3. **Create profiles** — Set up different profiles for job apps, scholarships, etc.
 4. **Fill forms** — Visit any website with a form, click the floating button or use the popup **Fill** tab
 5. **Text expansion** — Type `@phone` or `@email` in any input field
-6. **Backup** — Export an encrypted backup from Settings
+6. **Job portal scan** — On LinkedIn, Naukri, Indeed, etc., click the floating **scan** button or **Job Portal** label to scan all fields, upload a PNG/PDF or paste text, then autofill
+7. **Backup** — Export an encrypted backup from Settings
 
 ## Architecture
 

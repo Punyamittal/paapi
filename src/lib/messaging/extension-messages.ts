@@ -29,13 +29,13 @@ function sendMessageOnce<T>(message: ExtensionMessage): Promise<T> {
   });
 }
 
-/** Reliable chrome.runtime.sendMessage with lastError handling and one retry when the SW wakes up. */
+/** Reliable chrome.runtime.sendMessage with lastError handling and retries when the SW wakes up. */
 export async function sendExtensionMessage<T = unknown>(
   message: ExtensionMessage,
   options?: { retries?: number; retryDelayMs?: number },
 ): Promise<T> {
-  const retries = options?.retries ?? 1;
-  const retryDelayMs = options?.retryDelayMs ?? 120;
+  const retries = options?.retries ?? 3;
+  const retryDelayMs = options?.retryDelayMs ?? 150;
 
   let lastError: Error | null = null;
 
@@ -45,7 +45,7 @@ export async function sendExtensionMessage<T = unknown>(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Extension message failed');
       if (attempt < retries && isPortClosedError(lastError.message)) {
-        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs * (attempt + 1)));
         continue;
       }
       throw lastError;
@@ -57,10 +57,36 @@ export async function sendExtensionMessage<T = unknown>(
 
 export async function sendExtensionMessageSafe<T = unknown>(
   message: ExtensionMessage,
+  options?: { retries?: number; retryDelayMs?: number },
 ): Promise<T | null> {
   try {
-    return await sendExtensionMessage<T>(message);
+    return await sendExtensionMessage<T>(message, options);
   } catch {
     return null;
   }
+}
+
+/** Keeps the MV3 service worker alive while the popup is open. */
+export function connectPopupKeepalive(): (() => void) | undefined {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.connect) {
+    return undefined;
+  }
+
+  try {
+    const port = chrome.runtime.connect({ name: 'popup' });
+    return () => {
+      try {
+        port.disconnect();
+      } catch {
+        // Port may already be closed.
+      }
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Wake the service worker before other messages (common fix for "port closed" on cold start). */
+export async function wakeServiceWorker(): Promise<void> {
+  await sendExtensionMessageSafe({ type: 'PING' }, { retries: 5, retryDelayMs: 120 });
 }

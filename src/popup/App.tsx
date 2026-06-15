@@ -15,7 +15,7 @@ import {
   clearPopupEncryptionPassword,
   hasPopupEncryptionPassword,
 } from '@/lib/crypto/popup-session';
-import { sendExtensionMessage, sendExtensionMessageSafe } from '@/lib/messaging/extension-messages';
+import { sendExtensionMessage, sendExtensionMessageSafe, connectPopupKeepalive, wakeServiceWorker } from '@/lib/messaging/extension-messages';
 import { getAllProfiles } from '@/lib/storage/indexed-db';
 import { initializeDefaultProfile } from '@/lib/vault/vault-service';
 import type { Profile, SessionState } from '@/types';
@@ -61,28 +61,39 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const disconnectKeepalive = connectPopupKeepalive();
+
     void (async () => {
       try {
+        await wakeServiceWorker();
         await refreshSession();
         await refreshProfiles();
       } finally {
         setLoading(false);
       }
     })();
+
+    return () => {
+      disconnectKeepalive?.();
+    };
   }, [refreshSession, refreshProfiles]);
 
   const handleUnlock = async (password: string) => {
-    const result = await sendExtensionMessage<{ success?: boolean }>({
-      type: 'UNLOCK_VAULT',
-      payload: { password },
-    });
-    if (result?.success) {
-      setPopupEncryptionPassword(password);
-      await initializeDefaultProfile();
-      await refreshSession();
-      await refreshProfiles();
+    try {
+      const result = await sendExtensionMessage<{ success?: boolean }>({
+        type: 'UNLOCK_VAULT',
+        payload: { password },
+      });
+      if (result?.success) {
+        setPopupEncryptionPassword(password);
+        await initializeDefaultProfile();
+        await refreshSession();
+        await refreshProfiles();
+      }
+      return Boolean(result?.success);
+    } catch {
+      return false;
     }
-    return Boolean(result?.success);
   };
 
   const handleLock = async () => {

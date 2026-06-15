@@ -124,6 +124,17 @@ export function scanFormFields(
   ];
 }
 
+export function toPageFormFieldDescriptors(
+  matches: FormFieldMatch[],
+): import('@/types').PageFormFieldDescriptor[] {
+  return matches.map((match) => ({
+    label: match.label,
+    name: match.name,
+    placeholder: match.placeholder,
+    isLongAnswer: match.isLongAnswer,
+  }));
+}
+
 export function fillField(match: FormFieldMatch, value: string): boolean {
   const { element, fieldType } = match;
 
@@ -173,6 +184,47 @@ export function fillField(match: FormFieldMatch, value: string): boolean {
   }
 
   return false;
+}
+
+export function analyzeForm(
+  vaultData: Record<string, string>,
+  learnedMappings: LearnedMapping[] = [],
+): FillReport {
+  const matches = scanFormFields(vaultData, learnedMappings);
+  let filledCount = 0;
+  let reviewCount = 0;
+  let unknownCount = 0;
+
+  clearHighlights();
+
+  for (const match of matches) {
+    if (match.isLongAnswer) {
+      reviewCount++;
+      highlightField(match.element, 'review');
+      continue;
+    }
+
+    if (match.suggestedValue && match.confidence >= 0.5) {
+      if (match.needsReview) {
+        reviewCount++;
+        highlightField(match.element, 'review');
+      } else {
+        filledCount++;
+        highlightField(match.element, 'filled');
+      }
+    } else {
+      unknownCount++;
+      highlightField(match.element, 'unknown');
+    }
+  }
+
+  return {
+    totalFields: matches.length,
+    filledCount,
+    reviewCount,
+    unknownCount,
+    matches,
+  };
 }
 
 export function fillForm(

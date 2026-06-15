@@ -117,6 +117,14 @@ export interface FormFieldMatch {
   isLongAnswer: boolean;
 }
 
+/** Serializable form field info sent to the background for vault sync */
+export interface PageFormFieldDescriptor {
+  label: string;
+  name: string;
+  placeholder: string;
+  isLongAnswer: boolean;
+}
+
 export interface FillReport {
   totalFields: number;
   filledCount: number;
@@ -182,6 +190,7 @@ export type MessageType =
   | 'UNLOCK_VAULT'
   | 'LOCK_VAULT'
   | 'GET_SESSION'
+  | 'PING'
   | 'FILL_FORM'
   | 'SCAN_FORM'
   | 'GET_PROFILES'
@@ -195,6 +204,9 @@ export type MessageType =
   | 'EXTRACT_DOCUMENT_VISION'
   | 'SCAN_DOCUMENT_OLLAMA'
   | 'EXTRACT_PASTE_TEXT'
+  | 'APPLY_EXTRACTED_TO_VAULT'
+  | 'SYNC_PAGE_FORM_FIELDS'
+  | 'OPEN_FORM_SCAN'
   | 'EXPORT_BACKUP'
   | 'IMPORT_BACKUP';
 

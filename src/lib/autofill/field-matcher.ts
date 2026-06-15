@@ -220,3 +220,47 @@ export function categoryFromVaultKey(key: string): FieldCategory {
   };
   return mapping[key] ?? 'custom';
 }
+
+const STANDARD_VAULT_KEYS = new Set(Object.keys(FIELD_SYNONYMS));
+
+export function getFormFieldDisplayLabel(
+  label: string,
+  name: string,
+  placeholder: string,
+): string {
+  return (label || name || placeholder || '').trim();
+}
+
+export function deriveCustomVaultKey(
+  label: string,
+  name: string,
+  reservedKeys: Set<string>,
+): string {
+  const candidates = [label.trim(), name.trim().replace(/\[\]$/, '')].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const base = candidate
+      .toLowerCase()
+      .replace(/[^a-z0-9\s_-]/g, ' ')
+      .replace(/^(select|enter|choose|pick)\s+/i, '')
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 48);
+
+    if (!base) continue;
+
+    if (!reservedKeys.has(base)) return base;
+
+    for (let suffix = 2; suffix < 100; suffix += 1) {
+      const candidateKey = `${base}_${suffix}`;
+      if (!reservedKeys.has(candidateKey)) return candidateKey;
+    }
+  }
+
+  return `custom_${crypto.randomUUID().slice(0, 8)}`;
+}
+
+export function isStandardVaultKey(key: string): boolean {
+  return STANDARD_VAULT_KEYS.has(key);
+}

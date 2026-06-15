@@ -1,12 +1,25 @@
 import { generateId } from '@/lib/crypto/encryption';
 import {
+  deriveCustomVaultKey,
+  getFormFieldDisplayLabel,
+  matchFieldToVaultKey,
+} from '@/lib/autofill/field-matcher';
+import { getDomainFromUrl, learnFieldMapping } from '@/lib/learning/field-learning';
+import {
   getAllProfiles,
   getDefaultProfile,
   getFieldsByProfile,
+  getMappingsByDomain,
   saveField,
   saveProfile,
 } from '@/lib/storage/indexed-db';
-import type { ExtractedField, FieldCategory, Profile, VaultField } from '@/types';
+import type {
+  ExtractedField,
+  FieldCategory,
+  PageFormFieldDescriptor,
+  Profile,
+  VaultField,
+} from '@/types';
 
 export const DEFAULT_FIELD_TEMPLATES: Array<{
   key: string;
@@ -174,6 +187,82 @@ export async function upsertField(
 
   await saveField(field);
   return field;
+}
+
+export async function ensureFieldSlot(
+  profileId: string,
+  key: string,
+  label: string,
+  category: FieldCategory = 'custom',
+): Promise<VaultField> {
+  const fields = asArray<VaultField>(await getFieldsByProfile(profileId));
+  const existing = fields.find((f) => f.key === key);
+  if (existing) return existing;
+
+  const now = Date.now();
+  const field: VaultField = {
+    id: generateId(),
+    key,
+    label,
+    value: '',
+    category,
+    profileId,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await saveField(field);
+  return field;
+}
+
+export async function syncFormFieldsToVault(
+  profileId: string,
+  pageFields: PageFormFieldDescriptor[],
+  url: string,
+): Promise<{ createdCount: number; createdLabels: string[]; vaultData: Record<string, string> }> {
+  const domain = getDomainFromUrl(url);
+  const existingFields = asArray<VaultField>(await getFieldsByProfile(profileId));
+  const reservedKeys = new Set(existingFields.map((field) => field.key));
+  const learnedMappings = await getMappingsByDomain(domain);
+  const createdLabels: string[] = [];
+  let createdCount = 0;
+
+  for (const pageField of pageFields) {
+    if (pageField.isLongAnswer) continue;
+
+    const displayLabel = getFormFieldDisplayLabel(
+      pageField.label,
+      pageField.name,
+      pageField.placeholder,
+    );
+    if (!displayLabel) continue;
+
+    const { vaultKey, confidence } = matchFieldToVaultKey(
+      pageField.label,
+      pageField.name,
+      pageField.placeholder,
+      learnedMappings,
+    );
+
+    if (vaultKey && confidence >= 0.5) {
+      await learnFieldMapping(displayLabel, pageField.name, vaultKey, url);
+      continue;
+    }
+
+    const customKey = deriveCustomVaultKey(displayLabel, pageField.name, reservedKeys);
+    const isNew = !reservedKeys.has(customKey);
+
+    await ensureFieldSlot(profileId, customKey, displayLabel, 'custom');
+    await learnFieldMapping(displayLabel, pageField.name, customKey, url);
+
+    reservedKeys.add(customKey);
+    if (isNew) {
+      createdCount += 1;
+      createdLabels.push(displayLabel);
+    }
+  }
+
+  const vaultData = await getVaultData(profileId);
+  return { createdCount, createdLabels, vaultData };
 }
 
 export async function applyExtractedFieldsToVault(

@@ -4,8 +4,11 @@ import {
   fillForm,
   clearHighlights,
   detectPortalContext,
+  scanFormFields,
+  toPageFormFieldDescriptors,
 } from '@/lib/autofill/form-scanner';
 import { getLearnedMappingsForPage } from '@/lib/learning/field-learning';
+import { sendExtensionMessage } from '@/lib/messaging/extension-messages';
 import type { ExtensionMessage, FillReport } from '@/types';
 import './content-script.css';
 
@@ -39,14 +42,35 @@ function injectFloatingAssistant(): void {
 }
 
 async function handleFillForm(): Promise<FillReport | null> {
-  const response = await chrome.runtime.sendMessage({
-    type: 'FILL_FORM',
-  } as ExtensionMessage);
+  const response = await sendExtensionMessage<{
+    vaultData?: Record<string, string>;
+    profileId?: string;
+    error?: string;
+  }>({ type: 'FILL_FORM' });
 
-  if (response?.error || !response?.vaultData) return null;
+  if (response?.error || !response?.vaultData || !response.profileId) return null;
 
-  const mappings = await getLearnedMappingsForPage(window.location.href);
-  return fillForm(response.vaultData, mappings);
+  const url = window.location.href;
+  const mappings = await getLearnedMappingsForPage(url);
+  const scanned = scanFormFields(response.vaultData, mappings);
+
+  const syncResult = await sendExtensionMessage<{
+    vaultData?: Record<string, string>;
+    error?: string;
+  }>({
+    type: 'SYNC_PAGE_FORM_FIELDS',
+    payload: {
+      profileId: response.profileId,
+      url,
+      fields: toPageFormFieldDescriptors(scanned),
+    },
+  });
+
+  if (syncResult?.error) return null;
+
+  const vaultData = syncResult?.vaultData ?? response.vaultData;
+  const freshMappings = await getLearnedMappingsForPage(url);
+  return fillForm(vaultData, freshMappings);
 }
 
 // Text expansion listener
@@ -94,6 +118,11 @@ chrome.runtime.onMessage.addListener(
       void handleFillForm().then((report) => {
         sendResponse(report);
       });
+      return true;
+    }
+    if (message.type === 'OPEN_FORM_SCAN') {
+      window.dispatchEvent(new CustomEvent('formvault-trigger-job-scan'));
+      sendResponse({ ok: true });
       return true;
     }
     return false;

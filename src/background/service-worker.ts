@@ -8,9 +8,26 @@ import {
 } from '@/lib/crypto/session';
 import { setEncryptionPassword } from '@/lib/storage/indexed-db';
 import { getSettings } from '@/lib/storage/chrome-storage';
-import { initializeDefaultProfile, getVaultData } from '@/lib/vault/vault-service';
+import {
+  applyExtractedFieldsToVault,
+  getVaultData,
+  initializeDefaultProfile,
+  syncFormFieldsToVault,
+} from '@/lib/vault/vault-service';
 import type { ExtensionMessage } from '@/types';
 import { runOcrInOffscreen, warmUpOcrInOffscreen } from '@/background/offscreen-ocr';
+
+void loadSession();
+
+chrome.runtime.onStartup.addListener(() => {
+  void loadSession();
+});
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'popup') {
+    touchSession();
+  }
+});
 
 chrome.runtime.onInstalled.addListener(async () => {
   await loadSession();
@@ -63,6 +80,10 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     case 'GET_SESSION': {
       await loadSession();
       return getSession();
+    }
+
+    case 'PING': {
+      return { ok: true };
     }
 
     case 'SWITCH_PROFILE': {
@@ -251,6 +272,42 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
           error: error instanceof Error ? error.message : 'Paste extraction failed',
         };
       }
+    }
+
+    case 'APPLY_EXTRACTED_TO_VAULT': {
+      const session = getSession();
+      if (!session.isUnlocked || !session.activeProfileId) {
+        return { error: 'Vault locked' };
+      }
+
+      const { profileId, fields } = message.payload as {
+        profileId: string;
+        fields: import('@/types').ExtractedField[];
+      };
+
+      return applyExtractedFieldsToVault(profileId, fields);
+    }
+
+    case 'SYNC_PAGE_FORM_FIELDS': {
+      const session = getSession();
+      if (!session.isUnlocked) {
+        return { error: 'Vault locked' };
+      }
+
+      const { profileId, url, fields } = message.payload as {
+        profileId: string;
+        url: string;
+        fields: import('@/types').PageFormFieldDescriptor[];
+      };
+
+      let activeProfileId = profileId || session.activeProfileId;
+      if (!activeProfileId) {
+        const profile = await initializeDefaultProfile();
+        activeProfileId = profile.id;
+        setActiveProfile(activeProfileId);
+      }
+
+      return syncFormFieldsToVault(activeProfileId, fields, url);
     }
 
     default:

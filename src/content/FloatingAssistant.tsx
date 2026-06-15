@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Shield,
   Zap,
@@ -7,7 +7,9 @@ import {
   User,
   X,
   GripVertical,
+  ScanLine,
 } from 'lucide-react';
+import { FormScanContent } from './FormScanContent';
 import type { FillReport, PortalContext } from '@/types';
 
 interface FloatingAssistantProps {
@@ -30,20 +32,42 @@ export function FloatingAssistant({
   onClearHighlights,
   portalContext,
 }: FloatingAssistantProps) {
+  const isJobPortal = portalContext === 'job';
   const [expanded, setExpanded] = useState(false);
+  const [scanMode, setScanMode] = useState(false);
   const [report, setReport] = useState<FillReport | null>(null);
   const [filling, setFilling] = useState(false);
   const [position, setPosition] = useState({ x: 20, y: 80 });
+  const [scanKey, setScanKey] = useState(0);
   const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
 
-  const handleFill = useCallback(async () => {
+  const handleQuickFill = useCallback(async () => {
     setFilling(true);
     onClearHighlights();
     const result = await onFillForm();
     setReport(result);
     setFilling(false);
+    setScanMode(false);
     setExpanded(true);
   }, [onFillForm, onClearHighlights]);
+
+  const handleFabClick = useCallback(() => {
+    if (isJobPortal) {
+      onClearHighlights();
+      setScanMode(true);
+      setExpanded(true);
+      setScanKey((key) => key + 1);
+      return;
+    }
+    void handleQuickFill();
+  }, [isJobPortal, onClearHighlights, handleQuickFill]);
+
+  useEffect(() => {
+    if (!isJobPortal) return;
+    const onTrigger = () => handleFabClick();
+    window.addEventListener('formvault-trigger-job-scan', onTrigger);
+    return () => window.removeEventListener('formvault-trigger-job-scan', onTrigger);
+  }, [isJobPortal, handleFabClick]);
 
   const onDragStart = (e: React.MouseEvent) => {
     dragRef.current = {
@@ -71,16 +95,42 @@ export function FloatingAssistant({
     document.addEventListener('mouseup', onUp);
   };
 
+  const closePanel = () => {
+    setExpanded(false);
+    setScanMode(false);
+    onClearHighlights();
+  };
+
   return (
     <div
       className="fv-assistant"
       style={{ bottom: `${position.y}px`, right: `${position.x}px` }}
     >
-      {expanded && report && (
+      {expanded && scanMode && isJobPortal && (
+        <div className="fv-panel fv-panel-scan">
+          <div className="fv-panel-header">
+            <span className="fv-panel-title">Job Application Scan</span>
+            <button type="button" className="fv-btn-icon" onClick={closePanel} aria-label="Close">
+              <X size={14} />
+            </button>
+          </div>
+          <div className="fv-panel-scroll">
+            <FormScanContent
+              key={scanKey}
+              autoScan
+              showUploadNotice
+              compact
+              onReportChange={setReport}
+            />
+          </div>
+        </div>
+      )}
+
+      {expanded && !scanMode && report && (
         <div className="fv-panel">
           <div className="fv-panel-header">
             <span className="fv-panel-title">Fill Report</span>
-            <button className="fv-btn-icon" onClick={() => setExpanded(false)}>
+            <button type="button" className="fv-btn-icon" onClick={closePanel}>
               <X size={14} />
             </button>
           </div>
@@ -103,7 +153,7 @@ export function FloatingAssistant({
             </div>
           </div>
           <div className="fv-panel-footer">
-            <button className="fv-btn-sm" onClick={onClearHighlights}>
+            <button type="button" className="fv-btn-sm" onClick={onClearHighlights}>
               Clear Highlights
             </button>
           </div>
@@ -111,15 +161,15 @@ export function FloatingAssistant({
       )}
 
       <div className="fv-fab-group">
-        {expanded && (
+        {expanded && !scanMode && (
           <div className="fv-actions">
-            <button className="fv-action-btn" title="Search Vault">
+            <button type="button" className="fv-action-btn" title="Search Vault">
               <Search size={16} />
             </button>
-            <button className="fv-action-btn" title="Generate Answer">
+            <button type="button" className="fv-action-btn" title="Generate Answer">
               <MessageSquare size={16} />
             </button>
-            <button className="fv-action-btn" title="Switch Profile">
+            <button type="button" className="fv-action-btn" title="Switch Profile">
               <User size={16} />
             </button>
           </div>
@@ -135,12 +185,14 @@ export function FloatingAssistant({
           </span>
           <button
             className="fv-fab"
-            onClick={handleFill}
+            onClick={handleFabClick}
             disabled={filling}
-            title="Fill Form"
+            title={isJobPortal ? 'Scan job application form' : 'Fill Form'}
           >
             {filling ? (
               <span className="fv-spinner" />
+            ) : isJobPortal ? (
+              <ScanLine size={20} />
             ) : (
               <Zap size={20} />
             )}
@@ -148,10 +200,15 @@ export function FloatingAssistant({
         </div>
       </div>
 
-      <div className="fv-badge">
+      <button
+        type="button"
+        className={`fv-badge ${isJobPortal ? 'fv-badge-job' : ''}`}
+        onClick={isJobPortal ? handleFabClick : undefined}
+        title={isJobPortal ? 'Scan form fields on this job portal' : undefined}
+      >
         <Shield size={10} />
         <span>{PORTAL_LABELS[portalContext]}</span>
-      </div>
+      </button>
     </div>
   );
 }
