@@ -1,0 +1,37 @@
+{
+  "name": "formvault-ai",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Privacy-first AI form assistant Chrome extension",
+  "type": "module",
+  "scripts": {
+    "icons": "node scripts/generate-icons.mjs",
+    "tesseract": "node scripts/copy-tesseract-assets.mjs",
+    "dev": "npm run icons && npm run tesseract && vite",
+    "build": "npm run icons && npm run tesseract && tsc --noEmit && vite build && node scripts/postbuild.mjs",
+    "extension": "npm run build && node scripts/print-extension-path.mjs",
+    "chrome": "npm run extension",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "idb": "^8.0.3",
+    "lucide-react": "^0.511.0",
+    "mammoth": "^1.9.0",
+    "pdfjs-dist": "^5.3.31",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tesseract.js": "^6.0.1"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.31",
+    "@tailwindcss/vite": "^4.1.8",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@types/chrome": "^0.0.323",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "@vitejs/plugin-react": "^6.0.0",
+    "tailwindcss": "^4.1.8",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  }
+}

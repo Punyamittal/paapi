@@ -1,0 +1,189 @@
+.fv-assistant {
+  position: fixed;
+  z-index: 2147483646;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  color: #1e293b;
+  pointer-events: auto;
+}
+
+.fv-fab-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.fv-fab-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fv-drag-handle {
+  cursor: grab;
+  color: #94a3b8;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.fv-drag-handle:active {
+  cursor: grabbing;
+}
+
+.fv-fab {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.fv-fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.fv-fab:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.fv-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: fv-spin 0.6s linear infinite;
+}
+
+@keyframes fv-spin {
+  to { transform: rotate(360deg); }
+}
+
+.fv-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fv-action-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #6366f1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: background 0.15s;
+}
+
+.fv-action-btn:hover {
+  background: #f1f5f9;
+}
+
+.fv-panel {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  width: 260px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.fv-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.fv-panel-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.fv-btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 2px;
+  display: flex;
+}
+
+.fv-panel-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.fv-stat {
+  text-align: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.fv-stat-num {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.fv-stat-label {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.fv-stat-success .fv-stat-num { color: #10b981; }
+.fv-stat-warning .fv-stat-num { color: #f59e0b; }
+.fv-stat-error .fv-stat-num { color: #ef4444; }
+
+.fv-panel-footer {
+  padding: 8px 14px 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.fv-btn-sm {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 12px;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.fv-btn-sm:hover {
+  background: #f1f5f9;
+}
+
+.fv-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #94a3b8;
+  justify-content: flex-end;
+}

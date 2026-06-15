@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "FormVault AI",
+  "description": "Privacy-first AI form assistant. Store data locally, fill forms intelligently, zero cloud dependency.",
+  "version": "0.1.0",
+  "icons": {
+    "16": "public/icons/icon-16.png",
+    "48": "public/icons/icon-48.png",
+    "128": "public/icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "FormVault AI",
+    "default_icon": {
+      "16": "public/icons/icon-16.png",
+      "48": "public/icons/icon-48.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/content-script.tsx"],
+      "css": ["src/content/content-script.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage", "activeTab", "scripting", "offscreen"],
+  "host_permissions": [
+    "<all_urls>",
+    "http://127.0.0.1:11434/*",
+    "http://localhost:11434/*",
+    "https://cdn.jsdelivr.net/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/*", "tesseract/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}
