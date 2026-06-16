@@ -8,18 +8,13 @@ import {
   MessageSquare,
   Search,
   Settings,
-  Lock,
 } from 'lucide-react';
-import {
-  setPopupEncryptionPassword,
-  clearPopupEncryptionPassword,
-  hasPopupEncryptionPassword,
-} from '@/lib/crypto/popup-session';
+import { LOCAL_VAULT_KEY } from '@/lib/crypto/auto-unlock';
+import { setPopupEncryptionPassword } from '@/lib/crypto/popup-session';
 import { sendExtensionMessage, sendExtensionMessageSafe, connectPopupKeepalive, wakeServiceWorker } from '@/lib/messaging/extension-messages';
 import { getAllProfiles } from '@/lib/storage/indexed-db';
 import { initializeDefaultProfile } from '@/lib/vault/vault-service';
 import type { Profile, SessionState } from '@/types';
-import { UnlockScreen } from './components/UnlockScreen';
 import { QuickFill } from './components/QuickFill';
 import { ProfilesView } from './components/ProfilesView';
 import { VaultView } from './components/VaultView';
@@ -48,7 +43,7 @@ export function App() {
 
   const refreshSession = useCallback(async () => {
     const result = await sendExtensionMessageSafe<SessionState>({ type: 'GET_SESSION' });
-    setSession(result ?? { isUnlocked: false, activeProfileId: null, lastActivity: Date.now() });
+    setSession(result ?? { isUnlocked: true, activeProfileId: null, lastActivity: Date.now() });
   }, []);
 
   const refreshProfiles = useCallback(async () => {
@@ -66,6 +61,9 @@ export function App() {
     void (async () => {
       try {
         await wakeServiceWorker();
+        await sendExtensionMessage({ type: 'AUTO_INIT_VAULT' });
+        setPopupEncryptionPassword(LOCAL_VAULT_KEY);
+        await initializeDefaultProfile();
         await refreshSession();
         await refreshProfiles();
       } finally {
@@ -77,30 +75,6 @@ export function App() {
       disconnectKeepalive?.();
     };
   }, [refreshSession, refreshProfiles]);
-
-  const handleUnlock = async (password: string) => {
-    try {
-      const result = await sendExtensionMessage<{ success?: boolean }>({
-        type: 'UNLOCK_VAULT',
-        payload: { password },
-      });
-      if (result?.success) {
-        setPopupEncryptionPassword(password);
-        await initializeDefaultProfile();
-        await refreshSession();
-        await refreshProfiles();
-      }
-      return Boolean(result?.success);
-    } catch {
-      return false;
-    }
-  };
-
-  const handleLock = async () => {
-    await sendExtensionMessageSafe({ type: 'LOCK_VAULT' });
-    clearPopupEncryptionPassword();
-    await refreshSession();
-  };
 
   const handleSwitchProfile = async (profileId: string) => {
     await sendExtensionMessageSafe({
@@ -118,19 +92,14 @@ export function App() {
     );
   }
 
-  if (!session?.isUnlocked || !hasPopupEncryptionPassword()) {
-    return <UnlockScreen onUnlock={handleUnlock} />;
-  }
-
   const profileList = Array.isArray(profiles) ? profiles : [];
 
-  const activeProfile = profileList.find((p) => p.id === session.activeProfileId)
+  const activeProfile = profileList.find((p) => p.id === session?.activeProfileId)
     ?? profileList.find((p) => p.isDefault)
     ?? profileList[0];
 
   return (
     <div className="flex flex-col h-[520px] bg-white">
-      {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-brand-600 to-brand-500">
         <div className="flex items-center gap-2">
           <Shield className="w-5 h-5 text-white" />
@@ -143,21 +112,13 @@ export function App() {
             )}
           </div>
         </div>
-        <button
-          onClick={handleLock}
-          className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
-          title="Lock vault"
-        >
-          <Lock className="w-4 h-4 text-white" />
-        </button>
       </header>
 
-      {/* Content */}
       <main className="flex-1 overflow-y-auto">
         {!activeProfile && activeTab !== 'settings' && activeTab !== 'fill' && activeTab !== 'profiles' ? (
           <div className="p-6 text-center text-slate-400">
             <p className="text-xs">No profile loaded yet.</p>
-            <p className="text-[10px] mt-1">Lock and unlock the vault, or open the Profiles tab.</p>
+            <p className="text-[10px] mt-1">Open the Profiles tab to get started.</p>
           </div>
         ) : (
         <>
@@ -193,7 +154,6 @@ export function App() {
         )}
       </main>
 
-      {/* Tab Bar */}
       <nav className="flex border-t border-slate-100 bg-slate-50">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button

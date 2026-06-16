@@ -56,16 +56,9 @@ export async function unlockVault(password: string): Promise<boolean> {
 }
 
 export async function lockVault(): Promise<void> {
-  session = {
-    isUnlocked: false,
-    lastActivity: 0,
-    activeProfileId: session.activeProfileId,
-  };
+  // Vault lock disabled — session stays available for autofill.
+  session.lastActivity = Date.now();
   await persistSession();
-  if (autoLockTimer) {
-    clearTimeout(autoLockTimer);
-    autoLockTimer = null;
-  }
 }
 
 export function touchSession(): void {
@@ -92,6 +85,13 @@ async function persistSession(): Promise<void> {
 }
 
 function resetAutoLockTimer(minutes = DEFAULT_AUTO_LOCK_MINUTES): void {
+  if (minutes <= 0) {
+    if (autoLockTimer) {
+      clearTimeout(autoLockTimer);
+      autoLockTimer = null;
+    }
+    return;
+  }
   if (autoLockTimer) clearTimeout(autoLockTimer);
   autoLockTimer = setTimeout(
     () => {
@@ -99,6 +99,11 @@ function resetAutoLockTimer(minutes = DEFAULT_AUTO_LOCK_MINUTES): void {
     },
     minutes * 60 * 1000,
   );
+}
+
+export async function resetVaultToLocalKey(localKey: string): Promise<void> {
+  await chrome.storage.local.remove(PASSWORD_HASH_KEY);
+  await setupVault(localKey);
 }
 
 export async function changeMasterPassword(

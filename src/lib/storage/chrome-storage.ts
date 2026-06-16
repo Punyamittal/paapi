@@ -3,14 +3,14 @@ import type { AppSettings } from '@/types';
 const SETTINGS_KEY = 'formvault_settings';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  autoLockMinutes: 15,
+  autoLockMinutes: 0,
   enableBiometric: false,
   enableTextExpansion: true,
   enableFloatingAssistant: true,
   enableSidebar: false,
   highContrast: false,
   fontSize: 'md',
-  aiProvider: 'local',
+  aiProvider: 'ollama',
   ollamaEndpoint: 'http://127.0.0.1:11434',
   ollamaModel: '',
   ollamaVisionModel: '',

@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { FloatingAssistant } from './FloatingAssistant';
 import {
-  fillForm,
+  fillFormAsync,
   clearHighlights,
   detectPortalContext,
   scanFormFields,
@@ -42,6 +42,8 @@ function injectFloatingAssistant(): void {
 }
 
 async function handleFillForm(): Promise<FillReport | null> {
+  await sendExtensionMessage({ type: 'AUTO_INIT_VAULT' });
+
   const response = await sendExtensionMessage<{
     vaultData?: Record<string, string>;
     profileId?: string;
@@ -70,7 +72,7 @@ async function handleFillForm(): Promise<FillReport | null> {
 
   const vaultData = syncResult?.vaultData ?? response.vaultData;
   const freshMappings = await getLearnedMappingsForPage(url);
-  return fillForm(vaultData, freshMappings);
+  return fillFormAsync(vaultData, freshMappings);
 }
 
 // Text expansion listener

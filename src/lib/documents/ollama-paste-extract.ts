@@ -1,5 +1,6 @@
 import { chatWithOllama } from '@/lib/ai/ollama-client';
-import type { ExtractedField, FieldCategory } from '@/types';
+import { categoryFromVaultKey } from '@/lib/autofill/field-matcher';
+import type { ExtractedField, FieldCategory, FormTargetField } from '@/types';
 
 const MAX_INPUT_CHARS = 20_000;
 const HEAD_CHARS = 5_500;
@@ -34,6 +35,12 @@ export const PASTE_FIELD_DEFINITIONS: Array<{
     label: 'Permanent Address',
     category: 'permanentAddress',
   },
+  { jsonKey: 'street', key: 'street', label: 'Street / House No.', category: 'custom' },
+  { jsonKey: 'locality', key: 'locality', label: 'Locality / Area', category: 'custom' },
+  { jsonKey: 'city', key: 'city', label: 'City', category: 'custom' },
+  { jsonKey: 'district', key: 'district', label: 'District', category: 'custom' },
+  { jsonKey: 'pincode', key: 'pincode', label: 'Pincode / ZIP', category: 'custom' },
+  { jsonKey: 'country', key: 'country', label: 'Country', category: 'custom' },
   {
     jsonKey: 'temporaryAddress',
     key: 'temporaryAddress',
@@ -165,13 +172,40 @@ function extractJsonObject(text: string): Record<string, unknown> {
   }
 }
 
-export function fieldsFromJson(json: Record<string, unknown>): ExtractedField[] {
+export function fieldsFromJson(
+  json: Record<string, unknown>,
+  formTargets: FormTargetField[] = [],
+): ExtractedField[] {
   if (!json || typeof json !== 'object' || Array.isArray(json)) {
     return [];
   }
 
   const fields: ExtractedField[] = [];
   const seen = new Set<string>();
+  const seenKeys = new Set<string>();
+
+  const addField = (
+    key: string,
+    label: string,
+    value: string,
+    category: FieldCategory = 'custom',
+    confidence = 0.93,
+  ) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const dedupeKey = `${key}:${trimmed.slice(0, 80)}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    seenKeys.add(key);
+    fields.push({
+      key,
+      label,
+      value: trimmed,
+      category,
+      confidence,
+      approved: false,
+    });
+  };
 
   for (const def of PASTE_FIELD_DEFINITIONS) {
     let value = normalizeFieldValue(json[def.jsonKey]);
@@ -189,34 +223,74 @@ export function fieldsFromJson(json: Record<string, unknown>): ExtractedField[] 
       value = `${value.slice(0, 1197)}...`;
     }
 
-    const dedupeKey = `${def.key}:${value.slice(0, 80)}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
+    addField(def.key, def.label, value, def.category);
+  }
 
-    fields.push({
-      key: def.key,
-      label: def.label,
-      value,
-      category: def.category,
-      confidence: 0.93,
-      approved: false,
-    });
+  const formFieldValues = json.formFields;
+  if (formFieldValues && typeof formFieldValues === 'object' && !Array.isArray(formFieldValues)) {
+    const targetByKey = new Map(formTargets.map((target) => [target.vaultKey, target]));
+    for (const [rawKey, rawValue] of Object.entries(formFieldValues as Record<string, unknown>)) {
+      const value = normalizeFieldValue(rawValue);
+      if (!value) continue;
+      const target = targetByKey.get(rawKey);
+      addField(
+        rawKey,
+        target?.label ?? rawKey.replace(/_/g, ' '),
+        value,
+        categoryFromVaultKey(rawKey),
+        0.91,
+      );
+    }
+  }
+
+  for (const target of formTargets) {
+    if (seenKeys.has(target.vaultKey)) continue;
+    const direct = normalizeFieldValue(json[target.vaultKey]);
+    if (direct) {
+      addField(target.vaultKey, target.label, direct, categoryFromVaultKey(target.vaultKey));
+    }
   }
 
   return fields;
 }
 
-export function buildExtractionPrompt(text: string): { systemPrompt: string; userPrompt: string } {
+export function buildExtractionPrompt(
+  text: string,
+  formTargets: FormTargetField[] = [],
+): { systemPrompt: string; userPrompt: string } {
   const prepared = prepareTextForExtraction(text);
   const isLongDoc = text.length > 4_000;
 
   const systemPrompt =
-    'You extract structured information from pasted text. The text may be a resume, ID details, ' +
-    'research paper, contract, NDA, internship agreement, tax invoice, receipt, article, notes, or mixed content. ' +
-    'Return ONLY valid JSON. Never invent values — use empty string for missing fields. ' +
-    'Summarize long sections concisely but keep the most important facts, numbers, and names.';
+    'You extract structured information from pasted text or documents. The text may be a resume, ID, ' +
+    'invoice, job application profile, or mixed content. Return ONLY valid JSON. Never invent values — ' +
+    'use empty string for missing fields. Break compound data into separate fields when the form needs them ' +
+    '(e.g. split full address into city, state, locality, pincode; split name into first/last when needed).';
 
-  const userPrompt = `Analyze the pasted text and extract the most important information.
+  const formFieldsBlock =
+    formTargets.length > 0
+      ? `
+
+IMPORTANT — also fill these web form fields (use the vaultKey as JSON key inside "formFields"):
+${formTargets
+  .map((field) => {
+    const options =
+      field.options && field.options.length > 0
+        ? ` | options: ${field.options.slice(0, 12).join(', ')}${field.options.length > 12 ? '…' : ''}`
+        : '';
+    const typeHint = field.fieldType === 'select' || field.fieldType === 'combobox'
+      ? ' [DROPDOWN — pick exact option text]'
+      : '';
+    return `- vaultKey "${field.vaultKey}" | label "${field.label}" | name="${field.name}"${typeHint}${options}`;
+  })
+  .join('\n')}
+
+Add a "formFields" object mapping each vaultKey above to the best matching value from the text.
+For DROPDOWN fields, return the exact option label/value that should be selected.
+Break down addresses into locality, city, state, pincode separately — never put the full address in city/locality fields.`
+      : '';
+
+  const userPrompt = `Analyze the text and extract all useful information.
 
 Return JSON with exactly these keys (use "" when not present):
 {
@@ -253,6 +327,12 @@ Return JSON with exactly these keys (use "" when not present):
   "email": "",
   "phone": "",
   "permanentAddress": "",
+  "street": "",
+  "locality": "",
+  "city": "",
+  "district": "",
+  "pincode": "",
+  "country": "",
   "temporaryAddress": "",
   "education": "",
   "institute": "",
@@ -266,20 +346,24 @@ Return JSON with exactly these keys (use "" when not present):
   "linkedin": "",
   "portfolio": "",
   "emergencyContact": "",
-  "notes": ""
+  "notes": "",
+  "formFields": {}
 }
 
 Rules:
-- For research papers: fill documentTitle, authors, affiliation, abstract, keyFindings, contributions, methodology, dataset, results, technologies, keywords, publicationVenue, doi.
-- For contracts, NDAs, internship or employment agreements: fill documentTitle, documentType, fullName (intern/employee/party name), companyName, projectName, signatory, institute, internshipDuration, publishedDate (agreement date), and a short abstract (purpose of agreement).
-- For tax invoices and receipts: fill documentTitle, documentType, fullName (customer/bill-to name), companyName (vendor/platform), permanentAddress (customer address), orderId, invoiceNumber, gstin, publishedDate (invoice date), invoiceSubtotal, invoiceTotalWords, state.
-- For resumes/profiles: prioritize fullName, email, phone, education, institute, skills, workExperience.
-- For ID documents: prioritize aadhaar, pan, passport, dateOfBirth, fullName.
-- documentType: one of "research paper", "resume", "id document", "contract", "nda", "internship agreement", "tax invoice", "receipt", "article", "notes", "other".
-- Use only information from the text. Do not guess.
-${isLongDoc ? '- The text may be truncated — focus on title, parties, dates, and key terms.' : ''}
+- Fill standard keys AND formFields for every form field you can answer from the text.
+- ALWAYS split addresses: street (house/flat), locality (area/sector), city, state, pincode, country as separate fields.
+- Example: "B-7 Sector 11B, Rohini, Delhi 110085" → street="B-7 Sector 11B", locality="Rohini", city="Delhi", state="Delhi", pincode="110085".
+- For dropdown/select fields, pick values that match the listed options exactly when options are provided.
+- Split fullName into firstName/lastName in formFields when the form has separate name fields.
+- For resumes/profiles: prioritize fullName, email, phone, education, skills, workExperience, city, locality, state.
+- For invoices/IDs: extract names, addresses, dates, IDs, phone — split address parts for city/locality/state/pincode fields.
+- For "username" fields: use email local-part or phone if no username exists.
+- documentType: "resume", "id document", "tax invoice", "contract", or "other".
+- Use only information from the text. Do not guess.${formFieldsBlock}
+${isLongDoc ? '\n- The text may be truncated — focus on names, contact info, addresses, and dates.' : ''}
 
-Pasted text:
+Text:
 ---
 ${prepared}
 ---`;
@@ -292,24 +376,26 @@ export async function extractFieldsWithOllamaDirect(input: {
   endpoint: string;
   model: string;
   text: string;
+  formTargets?: FormTargetField[];
 }): Promise<ExtractedField[]> {
   const trimmed = input.text.trim();
   if (!trimmed) {
     throw new Error('Paste some text to extract fields from');
   }
 
-  const { systemPrompt, userPrompt } = buildExtractionPrompt(trimmed);
+  const formTargets = input.formTargets ?? [];
+  const { systemPrompt, userPrompt } = buildExtractionPrompt(trimmed, formTargets);
   const response = await chatWithOllama({
     endpoint: input.endpoint,
     model: input.model,
     systemPrompt,
     userPrompt,
     jsonMode: true,
-    maxTokens: 2800,
+    maxTokens: formTargets.length > 0 ? 3600 : 2800,
   });
 
   const json = extractJsonObject(response);
-  const fields = fieldsFromJson(json);
+  const fields = fieldsFromJson(json, formTargets);
 
   if (fields.length === 0) {
     throw new Error('No fields could be extracted from the pasted text');

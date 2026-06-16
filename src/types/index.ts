@@ -106,7 +106,7 @@ export interface LearnedMapping {
 
 export interface FormFieldMatch {
   element: HTMLElement;
-  fieldType: 'input' | 'textarea' | 'select' | 'radio' | 'checkbox';
+  fieldType: 'input' | 'textarea' | 'select' | 'combobox' | 'radio' | 'checkbox';
   label: string;
   name: string;
   placeholder: string;
@@ -115,6 +115,17 @@ export interface FormFieldMatch {
   confidence: number;
   needsReview: boolean;
   isLongAnswer: boolean;
+  availableOptions?: string[];
+}
+
+/** Target form field for AI extraction mapping */
+export interface FormTargetField {
+  vaultKey: string;
+  label: string;
+  name: string;
+  placeholder: string;
+  fieldType?: FormFieldMatch['fieldType'];
+  options?: string[];
 }
 
 /** Serializable form field info sent to the background for vault sync */
@@ -206,6 +217,8 @@ export type MessageType =
   | 'EXTRACT_PASTE_TEXT'
   | 'APPLY_EXTRACTED_TO_VAULT'
   | 'SYNC_PAGE_FORM_FIELDS'
+  | 'AUTO_INIT_VAULT'
+  | 'EXTRACT_FOR_PAGE'
   | 'OPEN_FORM_SCAN'
   | 'EXPORT_BACKUP'
   | 'IMPORT_BACKUP';

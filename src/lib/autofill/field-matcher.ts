@@ -25,10 +25,27 @@ const FIELD_SYNONYMS: Record<string, string[]> = {
   permanentAddress: [
     'permanent address', 'home address', 'residential address',
     'current address', 'address', 'street address', 'mailing address',
+    'full address', 'address line',
   ],
   temporaryAddress: [
     'temporary address', 'correspondence address', 'present address',
   ],
+  city: [
+    'city', 'select city', 'town', 'place', 'city name', 'current city',
+    'location city', 'job location city',
+  ],
+  locality: [
+    'locality', 'select locality', 'area', 'neighbourhood', 'neighborhood',
+    'sector', 'suburb', 'region area', 'local area',
+  ],
+  state: [
+    'state', 'select state', 'province', 'region', 'state name', 'ut',
+  ],
+  pincode: [
+    'pincode', 'pin code', 'zip', 'zip code', 'postal code', 'postcode',
+  ],
+  country: ['country', 'select country', 'nation'],
+  district: ['district', 'select district'],
   aadhaar: ['aadhaar', 'aadhar', 'uid', 'uidai', 'aadhaar number'],
   pan: ['pan', 'pan number', 'pan card', 'permanent account number'],
   passport: ['passport', 'passport number', 'passport no'],
@@ -199,6 +216,8 @@ export function buildFieldMatch(
 export function categoryFromVaultKey(key: string): FieldCategory {
   const mapping: Record<string, FieldCategory> = {
     fullName: 'name',
+    firstName: 'name',
+    lastName: 'name',
     fatherName: 'fatherName',
     motherName: 'motherName',
     dateOfBirth: 'dateOfBirth',
@@ -210,6 +229,13 @@ export function categoryFromVaultKey(key: string): FieldCategory {
     phone: 'phone',
     permanentAddress: 'permanentAddress',
     temporaryAddress: 'temporaryAddress',
+    city: 'custom',
+    locality: 'custom',
+    state: 'custom',
+    pincode: 'custom',
+    country: 'custom',
+    district: 'custom',
+    street: 'custom',
     education: 'education',
     skills: 'skills',
     workExperience: 'workExperience',

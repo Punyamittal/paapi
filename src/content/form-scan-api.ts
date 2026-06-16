@@ -13,6 +13,8 @@ export async function fetchVaultContext(): Promise<{
   vaultData: Record<string, string>;
   profileId: string;
 } | null> {
+  await sendExtensionMessage({ type: 'AUTO_INIT_VAULT' });
+
   const response = await sendMessage<{
     vaultData?: Record<string, string>;
     profileId?: string;

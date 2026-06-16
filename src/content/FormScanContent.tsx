@@ -3,13 +3,14 @@ import { Upload, FileText } from 'lucide-react';
 import {
   analyzeForm,
   clearHighlights,
-  fillForm,
+  fillFormAsync,
   scanFormFields,
+  toFormTargetFields,
   toPageFormFieldDescriptors,
 } from '@/lib/autofill/form-scanner';
 import { getLearnedMappingsForPage } from '@/lib/learning/field-learning';
 import { fetchVaultContext, sendMessage } from './form-scan-api';
-import type { ExtractedField, FillReport, FormFieldMatch } from '@/types';
+import type { ExtractedField, FillReport, FormFieldMatch, FormTargetField } from '@/types';
 
 function fieldStatus(match: FormFieldMatch): 'ready' | 'review' | 'missing' {
   if (match.isLongAnswer) return 'review';
@@ -46,6 +47,7 @@ export function FormScanContent({
   const [extracting, setExtracting] = useState(false);
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [profileId, setProfileId] = useState('');
+  const [formTargets, setFormTargets] = useState<FormTargetField[]>([]);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -65,7 +67,7 @@ export function FormScanContent({
     try {
       const context = await fetchVaultContext();
       if (!context) {
-        setError('Unlock FormVault AI first — click the extension icon and enter your password.');
+        setError('Could not load vault data. Reload the extension and try again.');
         updateReport(null);
         return;
       }
@@ -88,6 +90,7 @@ export function FormScanContent({
 
       const freshMappings = await getLearnedMappingsForPage(window.location.href);
       const result = analyzeForm(syncResult.vaultData, freshMappings);
+      setFormTargets(toFormTargetFields(result.matches, freshMappings));
       updateReport(result);
 
       const notices: string[] = [];
@@ -104,7 +107,7 @@ export function FormScanContent({
 
       if (showUploadNotice && result.unknownCount > 0) {
         notices.push(
-          `${result.unknownCount} field${result.unknownCount === 1 ? '' : 's'} still need values — upload a PNG/PDF or paste text to extract answers.`,
+          `${result.unknownCount} field${result.unknownCount === 1 ? '' : 's'} still need values — upload a PNG/PDF or paste text. Ollama will extract and fill automatically.`,
         );
       } else if (result.unknownCount === 0 && result.totalFields > 0) {
         notices.push('All fields have vault data. Click “Fill form” to autofill.');
@@ -123,21 +126,79 @@ export function FormScanContent({
     if (autoScan) void runScan();
   }, [autoScan, runScan]);
 
+  const saveAndFillFields = useCallback(
+    async (fields: ExtractedField[]) => {
+      if (!profileId || fields.length === 0) return;
+
+      setSaving(true);
+      setError('');
+
+      try {
+        await sendMessage({
+          type: 'APPLY_EXTRACTED_TO_VAULT',
+          payload: { profileId, fields },
+        });
+
+        const context = await fetchVaultContext();
+        if (!context) {
+          setError('Could not refresh vault after saving.');
+          return;
+        }
+
+        const mappings = await getLearnedMappingsForPage(window.location.href);
+        const scanned = scanFormFields(context.vaultData, mappings);
+        const syncResult = await sendMessage<{ vaultData: Record<string, string> }>({
+          type: 'SYNC_PAGE_FORM_FIELDS',
+          payload: {
+            profileId: context.profileId,
+            url: window.location.href,
+            fields: toPageFormFieldDescriptors(scanned),
+          },
+        });
+
+        clearHighlights();
+        const freshMappings = await getLearnedMappingsForPage(window.location.href);
+        const fillReport = await fillFormAsync(syncResult.vaultData, freshMappings);
+        setFormTargets(toFormTargetFields(fillReport.matches, freshMappings));
+        updateReport(fillReport);
+        setExtractedFields([]);
+        setPastedText('');
+        setNotice(
+          `Ollama extracted ${fields.length} fields and filled ${fillReport.filledCount} of ${fillReport.totalFields} form fields.`,
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not save and fill');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [profileId, updateReport],
+  );
+
+  const runOllamaExtract = useCallback(
+    async (text: string, sourceLabel = 'text') => {
+      const { extractFieldsFromPastedText } = await import('@/lib/documents/text-extractor');
+      const result = await extractFieldsFromPastedText(text, { formTargets });
+      if (!result.ok || result.fields.length === 0) {
+        throw new Error(result.error ?? `No fields could be extracted from the ${sourceLabel}`);
+      }
+
+      setExtractedFields(result.fields);
+      const modelNote = result.model ? ` (${result.model})` : '';
+      setNotice(`Ollama${modelNote} extracted ${result.fields.length} fields — saving and filling…`);
+      await saveAndFillFields(result.fields);
+      if (result.error) setError(result.error);
+    },
+    [formTargets, saveAndFillFields],
+  );
+
   const handleExtractFromPaste = async () => {
     if (!pastedText.trim()) return;
     setExtracting(true);
     setError('');
 
     try {
-      const { extractFieldsFromPastedText } = await import('@/lib/documents/text-extractor');
-      const result = await extractFieldsFromPastedText(pastedText);
-      if (!result.ok || result.fields.length === 0) {
-        setError(result.error ?? 'No fields could be extracted from the pasted text');
-        return;
-      }
-      setExtractedFields(result.fields);
-      setNotice(`Extracted ${result.fields.length} fields — save to vault and fill the form.`);
-      if (result.error) setError(result.error);
+      await runOllamaExtract(pastedText, 'pasted text');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extraction failed');
     } finally {
@@ -157,29 +218,19 @@ export function FormScanContent({
         || file.name.endsWith('.md')
       ) {
         const text = await file.text();
-        const { extractFieldsFromPastedText } = await import('@/lib/documents/text-extractor');
-        const result = await extractFieldsFromPastedText(text);
-        if (!result.ok || result.fields.length === 0) {
-          setError(result.error ?? 'No fields found in the text file');
-          return;
-        }
-        setExtractedFields(result.fields);
-        setNotice(`Extracted ${result.fields.length} fields from ${file.name}.`);
+        await runOllamaExtract(text, file.name);
         return;
       }
 
       const { processUploadedDocument } = await import('@/lib/documents/document-parser');
       const parsed = await processUploadedDocument(file);
-      if (parsed.extractedFields.length === 0) {
-        setError(
-          parsed.extractedText.trim()
-            ? 'Text was read but no standard fields were detected. Try pasting the text instead.'
-            : 'Could not read this file. Try a clearer PNG/photo or paste the text.',
-        );
+      const text = parsed.extractedText.trim();
+      if (!text) {
+        setError('Could not read this file. Try a clearer PNG/photo or paste the text.');
         return;
       }
-      setExtractedFields(parsed.extractedFields);
-      setNotice(`Extracted ${parsed.extractedFields.length} fields from ${file.name}.`);
+
+      await runOllamaExtract(text, file.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not process the file');
     } finally {
@@ -189,45 +240,7 @@ export function FormScanContent({
   };
 
   const handleSaveAndFill = async () => {
-    if (!profileId || extractedFields.length === 0) return;
-    setSaving(true);
-    setError('');
-
-    try {
-      await sendMessage({
-        type: 'APPLY_EXTRACTED_TO_VAULT',
-        payload: { profileId, fields: extractedFields },
-      });
-
-      const context = await fetchVaultContext();
-      if (!context) {
-        setError('Vault locked — unlock the extension and try again.');
-        return;
-      }
-
-      const mappings = await getLearnedMappingsForPage(window.location.href);
-      const scanned = scanFormFields(context.vaultData, mappings);
-      const syncResult = await sendMessage<{ vaultData: Record<string, string> }>({
-        type: 'SYNC_PAGE_FORM_FIELDS',
-        payload: {
-          profileId: context.profileId,
-          url: window.location.href,
-          fields: toPageFormFieldDescriptors(scanned),
-        },
-      });
-
-      clearHighlights();
-      const freshMappings = await getLearnedMappingsForPage(window.location.href);
-      const fillReport = fillForm(syncResult.vaultData, freshMappings);
-      updateReport(fillReport);
-      setExtractedFields([]);
-      setPastedText('');
-      setNotice(`Saved and filled ${fillReport.filledCount} field${fillReport.filledCount === 1 ? '' : 's'}.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save and fill');
-    } finally {
-      setSaving(false);
-    }
+    await saveAndFillFields(extractedFields);
   };
 
   const handleFillForm = async () => {
@@ -237,13 +250,13 @@ export function FormScanContent({
     try {
       const context = await fetchVaultContext();
       if (!context) {
-        setError('Unlock FormVault AI first.');
+        setError('Could not load vault data.');
         return;
       }
 
       clearHighlights();
       const mappings = await getLearnedMappingsForPage(window.location.href);
-      const fillReport = fillForm(context.vaultData, mappings);
+      const fillReport = await fillFormAsync(context.vaultData, mappings);
       updateReport(fillReport);
       setNotice(`Filled ${fillReport.filledCount} of ${fillReport.totalFields} fields.`);
     } catch (err) {
@@ -355,7 +368,7 @@ export function FormScanContent({
               onClick={() => void handleExtractFromPaste()}
               disabled={extracting || !pastedText.trim()}
             >
-              {extracting ? 'Extracting…' : 'Extract'}
+              {extracting || saving ? 'Extracting with Ollama…' : 'Extract & fill'}
             </button>
           </div>
         </div>

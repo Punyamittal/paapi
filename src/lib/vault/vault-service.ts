@@ -1,3 +1,4 @@
+import { enrichFieldsFromAddress } from '@/lib/autofill/address-parser';
 import { generateId } from '@/lib/crypto/encryption';
 import {
   deriveCustomVaultKey,
@@ -38,6 +39,13 @@ export const DEFAULT_FIELD_TEMPLATES: Array<{
   { key: 'phone', label: 'Phone Number', category: 'phone' },
   { key: 'permanentAddress', label: 'Permanent Address', category: 'permanentAddress' },
   { key: 'temporaryAddress', label: 'Temporary Address', category: 'temporaryAddress' },
+  { key: 'street', label: 'Street / House No.', category: 'custom' },
+  { key: 'locality', label: 'Locality / Area', category: 'custom' },
+  { key: 'city', label: 'City', category: 'custom' },
+  { key: 'district', label: 'District', category: 'custom' },
+  { key: 'state', label: 'State', category: 'custom' },
+  { key: 'pincode', label: 'Pincode / ZIP', category: 'custom' },
+  { key: 'country', label: 'Country', category: 'custom' },
   { key: 'education', label: 'Education', category: 'education' },
   { key: 'skills', label: 'Skills', category: 'skills' },
   { key: 'workExperience', label: 'Work Experience', category: 'workExperience' },
@@ -265,14 +273,67 @@ export async function syncFormFieldsToVault(
   return { createdCount, createdLabels, vaultData };
 }
 
+function expandExtractedFields(fields: ExtractedField[]): ExtractedField[] {
+  const byKey = new Map<string, ExtractedField>();
+  for (const field of fields) {
+    if (field.value.trim()) {
+      byKey.set(field.key, field);
+    }
+  }
+
+  const addressValue =
+    byKey.get('permanentAddress')?.value
+    ?? byKey.get('temporaryAddress')?.value
+    ?? byKey.get('customerAddress')?.value;
+
+  if (addressValue) {
+    for (const part of enrichFieldsFromAddress(new Set(byKey.keys()), addressValue)) {
+      byKey.set(part.key, {
+        key: part.key,
+        label: part.label,
+        value: part.value,
+        category: 'custom',
+        confidence: 0.86,
+        approved: false,
+      });
+    }
+  }
+
+  const fullName = byKey.get('fullName')?.value;
+  if (fullName && !byKey.has('firstName') && !byKey.has('lastName')) {
+    const nameParts = fullName.trim().split(/\s+/);
+    if (nameParts.length >= 2) {
+      byKey.set('firstName', {
+        key: 'firstName',
+        label: 'First Name',
+        value: nameParts[0],
+        category: 'name',
+        confidence: 0.88,
+        approved: false,
+      });
+      byKey.set('lastName', {
+        key: 'lastName',
+        label: 'Last Name',
+        value: nameParts.slice(1).join(' '),
+        category: 'name',
+        confidence: 0.88,
+        approved: false,
+      });
+    }
+  }
+
+  return [...byKey.values()];
+}
+
 export async function applyExtractedFieldsToVault(
   profileId: string,
   fields: ExtractedField[],
 ): Promise<{ savedCount: number; savedFields: ExtractedField[] }> {
+  const expanded = expandExtractedFields(fields);
   const savedFields: ExtractedField[] = [];
   let savedCount = 0;
 
-  for (const field of fields) {
+  for (const field of expanded) {
     const value = field.value.trim();
     if (!value) continue;
 

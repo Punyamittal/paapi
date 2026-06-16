@@ -4,11 +4,13 @@ import {
   listOllamaModels,
   type OllamaModel,
 } from '@/lib/ai/ollama-client';
+import { ensureOllamaModelsSelected } from '@/lib/ai/ollama-settings';
 import { categoryFromVaultKey } from '@/lib/autofill/field-matcher';
+import { addressComponentsToFields, parseAddress } from '@/lib/autofill/address-parser';
 import { extractFieldsWithOllamaDirect } from '@/lib/documents/ollama-paste-extract';
 import { sendExtensionMessage } from '@/lib/messaging/extension-messages';
-import { getSettings } from '@/lib/storage/chrome-storage';
-import type { ExtractedField, FieldCategory } from '@/types';
+import { getSettings, saveSettings } from '@/lib/storage/chrome-storage';
+import type { ExtractedField, FieldCategory, FormTargetField } from '@/types';
 
 export { extractFieldsWithOllamaDirect } from '@/lib/documents/ollama-paste-extract';
 
@@ -236,7 +238,11 @@ function extractFieldsLocally(text: string): ExtractedField[] {
     /customer\s*address\s*:\s*([\s\S]+?)(?=\n\s*(?:restaurant|order\s*id|state|invoice\s*no|gstin|document)\s*:|$)/i,
   )?.[1];
   if (customerAddress) {
-    add('permanentAddress', 'Customer Address', customerAddress.replace(/\s+/g, ' ').trim(), 0.87);
+    const cleaned = customerAddress.replace(/\s+/g, ' ').trim();
+    add('permanentAddress', 'Customer Address', cleaned, 0.87);
+    for (const part of addressComponentsToFields(parseAddress(cleaned))) {
+      add(part.key, part.label, part.value, 0.84);
+    }
   }
 
   const subtotal = text.match(/subtotal\s+([\d,.]+)/i)?.[1];
@@ -300,6 +306,7 @@ export async function resolveOllamaTextModel(): Promise<{
   endpoint: string;
   model: string;
 } | null> {
+  await ensureOllamaModelsSelected();
   const settings = await getSettings();
   const endpoint = settings.ollamaEndpoint ?? DEFAULT_OLLAMA_ENDPOINT;
   const preferred = settings.ollamaModel?.trim();
@@ -313,6 +320,9 @@ export async function resolveOllamaTextModel(): Promise<{
     models.find((model) => !isVisionModel(model.name)) ?? models[0] ?? null;
 
   if (textModel) {
+    if (settings.ollamaModel !== textModel.name) {
+      await saveSettings({ ollamaModel: textModel.name, aiProvider: 'ollama' });
+    }
     return { endpoint, model: textModel.name };
   }
 
@@ -323,54 +333,74 @@ export async function resolveOllamaTextModel(): Promise<{
   return null;
 }
 
-export async function extractFieldsFromPastedText(text: string): Promise<PasteExtractResult> {
+export interface ExtractTextOptions {
+  formTargets?: FormTargetField[];
+}
+
+function mergeExtractedFields(...groups: ExtractedField[][]): ExtractedField[] {
+  const byKey = new Map<string, ExtractedField>();
+  for (const group of groups) {
+    for (const field of group) {
+      if (field.value.trim()) {
+        byKey.set(field.key, field);
+      }
+    }
+  }
+  return [...byKey.values()];
+}
+
+async function extractWithOllama(
+  text: string,
+  resolved: { endpoint: string; model: string },
+  formTargets: FormTargetField[],
+): Promise<ExtractedField[]> {
+  try {
+    return await extractFieldsWithOllamaDirect({
+      endpoint: resolved.endpoint,
+      model: resolved.model,
+      text,
+      formTargets,
+    });
+  } catch (directError) {
+    const fallback = await sendExtensionMessage<{
+      fields?: ExtractedField[];
+      error?: string;
+    }>({
+      type: 'EXTRACT_FOR_PAGE',
+      payload: {
+        endpoint: resolved.endpoint,
+        model: resolved.model,
+        text,
+        formTargets,
+      },
+    });
+
+    if (fallback?.error) {
+      throw new Error(fallback.error);
+    }
+
+    const fields = ensureArray<ExtractedField>(fallback?.fields);
+    if (fields.length === 0) {
+      throw directError instanceof Error ? directError : new Error('Ollama extraction failed');
+    }
+    return fields;
+  }
+}
+
+export async function extractFieldsFromPastedText(
+  text: string,
+  options?: ExtractTextOptions,
+): Promise<PasteExtractResult> {
   const trimmed = text.trim();
   if (!trimmed) {
     return { ok: false, fields: [], method: 'local', error: 'Paste some text first' };
   }
 
+  const formTargets = options?.formTargets ?? [];
   const resolved = await resolveOllamaTextModel();
   if (resolved) {
     try {
-      let fields: ExtractedField[];
-
-      try {
-        fields = await extractFieldsWithOllamaDirect({
-          endpoint: resolved.endpoint,
-          model: resolved.model,
-          text: trimmed,
-        });
-      } catch (directError) {
-        try {
-          const fallback = await sendExtensionMessage<{
-            fields?: ExtractedField[];
-            error?: string;
-          }>({
-            type: 'EXTRACT_PASTE_TEXT',
-            payload: {
-              endpoint: resolved.endpoint,
-              model: resolved.model,
-              text: trimmed,
-            },
-          });
-
-          if (fallback?.error) {
-            throw new Error(fallback.error);
-          }
-
-          fields = ensureArray<ExtractedField>(fallback?.fields);
-          if (fields.length === 0) {
-            throw directError instanceof Error
-              ? directError
-              : new Error('Ollama extraction failed');
-          }
-        } catch {
-          throw directError instanceof Error
-            ? directError
-            : new Error('Ollama extraction failed');
-        }
-      }
-
+      const fields = await extractWithOllama(trimmed, resolved, formTargets);
       return {
         ok: true,
         fields,
@@ -382,7 +412,7 @@ export async function extractFieldsFromPastedText(text: string): Promise<PasteEx
       if (localFields.length > 0) {
         return {
           ok: true,
-          fields: localFields,
+          fields: mergeExtractedFields(localFields, []),
           method: 'local',
           error: error instanceof Error ? error.message : 'Ollama failed; used local parsing',
         };
@@ -406,6 +436,6 @@ export async function extractFieldsFromPastedText(text: string): Promise<PasteEx
     ok: false,
     fields: [],
     method: 'local',
-    error: 'No Ollama model configured. Set one in Settings, or paste clearer labeled text.',
+    error: 'Ollama is not running. Start Ollama and pull a model (e.g. ollama pull llama3.2).',
   };
 }

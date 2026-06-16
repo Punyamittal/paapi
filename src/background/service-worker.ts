@@ -1,10 +1,10 @@
+import { ensureOllamaModelsSelected } from '@/lib/ai/ollama-settings';
+import { ensureVaultUnlocked, LOCAL_VAULT_KEY } from '@/lib/crypto/auto-unlock';
 import {
   getSession,
   loadSession,
-  lockVault,
   setActiveProfile,
   touchSession,
-  unlockVault,
 } from '@/lib/crypto/session';
 import { setEncryptionPassword } from '@/lib/storage/indexed-db';
 import { getSettings } from '@/lib/storage/chrome-storage';
@@ -14,13 +14,24 @@ import {
   initializeDefaultProfile,
   syncFormFieldsToVault,
 } from '@/lib/vault/vault-service';
+import { extractFieldsWithOllamaDirect } from '@/lib/documents/ollama-paste-extract';
 import type { ExtensionMessage } from '@/types';
 import { runOcrInOffscreen, warmUpOcrInOffscreen } from '@/background/offscreen-ocr';
 
-void loadSession();
+async function bootstrapExtension(): Promise<void> {
+  await loadSession();
+  await ensureVaultUnlocked();
+  const profile = await initializeDefaultProfile();
+  if (!getSession().activeProfileId) {
+    setActiveProfile(profile.id);
+  }
+  await ensureOllamaModelsSelected();
+}
+
+void bootstrapExtension();
 
 chrome.runtime.onStartup.addListener(() => {
-  void loadSession();
+  void bootstrapExtension();
 });
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -30,8 +41,7 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.runtime.onInstalled.addListener(async () => {
-  await loadSession();
-  await initializeDefaultProfile();
+  await bootstrapExtension();
 });
 
 chrome.runtime.onMessage.addListener(
@@ -58,28 +68,38 @@ chrome.runtime.onMessage.addListener(
 
 async function handleMessage(message: ExtensionMessage): Promise<unknown> {
   switch (message.type) {
-    case 'UNLOCK_VAULT': {
-      const { password } = message.payload as { password: string };
-      const success = await unlockVault(password);
-      if (success) {
-        setEncryptionPassword(password);
-        const profile = await initializeDefaultProfile();
-        if (!getSession().activeProfileId) {
-          setActiveProfile(profile.id);
-        }
+    case 'AUTO_INIT_VAULT': {
+      await ensureVaultUnlocked();
+      setEncryptionPassword(LOCAL_VAULT_KEY);
+      const profile = await initializeDefaultProfile();
+      if (!getSession().activeProfileId) {
+        setActiveProfile(profile.id);
       }
-      return { success, profileId: getSession().activeProfileId };
+      const models = await ensureOllamaModelsSelected();
+      return {
+        success: true,
+        profileId: getSession().activeProfileId,
+        ...models,
+      };
+    }
+
+    case 'UNLOCK_VAULT': {
+      await ensureVaultUnlocked();
+      setEncryptionPassword(LOCAL_VAULT_KEY);
+      const profile = await initializeDefaultProfile();
+      if (!getSession().activeProfileId) {
+        setActiveProfile(profile.id);
+      }
+      return { success: true, profileId: getSession().activeProfileId };
     }
 
     case 'LOCK_VAULT': {
-      await lockVault();
-      setEncryptionPassword('');
       return { success: true };
     }
 
     case 'GET_SESSION': {
-      await loadSession();
-      return getSession();
+      await ensureVaultUnlocked();
+      return { ...getSession(), isUnlocked: true };
     }
 
     case 'PING': {
@@ -103,12 +123,10 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     }
 
     case 'FILL_FORM': {
-      const session = getSession();
-      if (!session.isUnlocked) {
-        return { error: 'Vault locked' };
-      }
+      await ensureVaultUnlocked();
+      setEncryptionPassword(LOCAL_VAULT_KEY);
 
-      let profileId = session.activeProfileId;
+      let profileId = getSession().activeProfileId;
       if (!profileId) {
         const profile = await initializeDefaultProfile();
         profileId = profile.id;
@@ -141,9 +159,12 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     }
 
     case 'GENERATE_ANSWER': {
+      await ensureVaultUnlocked();
+      setEncryptionPassword(LOCAL_VAULT_KEY);
       const session = getSession();
-      if (!session.isUnlocked || !session.activeProfileId) {
-        return { error: 'Vault locked' };
+      if (!session.activeProfileId) {
+        const profile = await initializeDefaultProfile();
+        setActiveProfile(profile.id);
       }
 
       const request = message.payload as import('@/types').GenerateAnswerRequest;
@@ -156,10 +177,11 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         await import('@/lib/ai/ai-engine');
       const settings = await getSettings();
 
+      const activeProfileId = getSession().activeProfileId!;
       const [fields, answers, documents] = await Promise.all([
-        getFieldsByProfile(session.activeProfileId),
-        getAnswersByProfile(session.activeProfileId),
-        getDocumentsByProfile(session.activeProfileId),
+        getFieldsByProfile(activeProfileId),
+        getAnswersByProfile(activeProfileId),
+        getDocumentsByProfile(activeProfileId),
       ]);
 
       const documentTexts = documents.map((d) => d.extractedText);
@@ -254,16 +276,15 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       return scanDocumentWithOllamaFromBase64(payload);
     }
 
-    case 'EXTRACT_PASTE_TEXT': {
+    case 'EXTRACT_PASTE_TEXT':
+    case 'EXTRACT_FOR_PAGE': {
       try {
         const payload = message.payload as {
           endpoint: string;
           model: string;
           text: string;
+          formTargets?: import('@/types').FormTargetField[];
         };
-        const { extractFieldsWithOllamaDirect } = await import(
-          '@/lib/documents/ollama-paste-extract'
-        );
         const fields = await extractFieldsWithOllamaDirect(payload);
         return { fields };
       } catch (error) {
@@ -275,24 +296,27 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     }
 
     case 'APPLY_EXTRACTED_TO_VAULT': {
-      const session = getSession();
-      if (!session.isUnlocked || !session.activeProfileId) {
-        return { error: 'Vault locked' };
-      }
+      await ensureVaultUnlocked();
+      setEncryptionPassword(LOCAL_VAULT_KEY);
 
       const { profileId, fields } = message.payload as {
         profileId: string;
         fields: import('@/types').ExtractedField[];
       };
 
-      return applyExtractedFieldsToVault(profileId, fields);
+      let activeProfileId = profileId || getSession().activeProfileId;
+      if (!activeProfileId) {
+        const profile = await initializeDefaultProfile();
+        activeProfileId = profile.id;
+        setActiveProfile(activeProfileId);
+      }
+
+      return applyExtractedFieldsToVault(activeProfileId, fields);
     }
 
     case 'SYNC_PAGE_FORM_FIELDS': {
-      const session = getSession();
-      if (!session.isUnlocked) {
-        return { error: 'Vault locked' };
-      }
+      await ensureVaultUnlocked();
+      setEncryptionPassword(LOCAL_VAULT_KEY);
 
       const { profileId, url, fields } = message.payload as {
         profileId: string;
@@ -300,7 +324,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         fields: import('@/types').PageFormFieldDescriptor[];
       };
 
-      let activeProfileId = profileId || session.activeProfileId;
+      let activeProfileId = profileId || getSession().activeProfileId;
       if (!activeProfileId) {
         const profile = await initializeDefaultProfile();
         activeProfileId = profile.id;
@@ -314,19 +338,6 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       return { error: 'Unknown message type' };
   }
 }
-
-// Auto-lock on inactivity
-setInterval(async () => {
-  const session = getSession();
-  if (!session.isUnlocked) return;
-
-  const settings = await getSettings();
-  const lockMs = settings.autoLockMinutes * 60 * 1000;
-  if (Date.now() - session.lastActivity > lockMs) {
-    await lockVault();
-    setEncryptionPassword('');
-  }
-}, 30_000);
 
 // Keep session alive on extension activity
 chrome.runtime.onConnect.addListener(() => {
