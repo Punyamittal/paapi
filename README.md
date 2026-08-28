@@ -1,3 +1,5 @@
+![Project Banner](docs/readme-agent/banner.svg)
+
 # FormVault AI
 
 A privacy-first Chrome extension that acts as a personal knowledge vault and intelligent form-filling assistant. All data stays on your device — encrypted, local, and never shared with any server.
@@ -145,22 +147,6 @@ src/
 6. **Job portal scan** — On LinkedIn, Naukri, Indeed, etc., click the floating **scan** button or **Job Portal** label to scan all fields, upload a PNG/PDF or paste text, then autofill
 7. **Backup** — Export an encrypted backup from Settings
 
-## Architecture
-
-```
-┌─────────────┐     messages      ┌──────────────────┐
-│   Popup UI  │ ◄──────────────► │  Service Worker   │
-└─────────────┘                   └────────┬─────────┘
-                                           │
-┌─────────────┐     messages               │ IndexedDB
-│  Content    │ ◄──────────────────────────┤ (encrypted)
-│  Script     │                            │
-└─────────────┘                   ┌────────┴─────────┐
-       │                          │  Chrome Storage   │
-       └──── offscreen OCR ──────►│  (settings/hash)  │
-                                  └──────────────────┘
-```
-
 ## Roadmap
 
 - [x] Tesseract.js OCR for image documents
@@ -174,3 +160,110 @@ src/
 ## License
 
 Private — All rights reserved.
+
+## Setup Guide
+
+### Frontend Setup
+
+```bash
+
+npm install
+npm run dev     # development
+npm run build && npm start   # production
+```
+
+Open `http://127.0.0.1:5173` (or the port shown in the terminal).
+
+### Running the Application
+
+1. **Start web app** — `npm run dev` in `./`
+
+```bash
+cd .
+npm install
+npm run dev
+```
+
+## System Architecture
+
+High-level system design, data flows, API map, and workflow pipelines derived from the repository structure.
+
+### System Architecture
+
+```mermaid
+graph TB
+    subgraph Client["Client Layer"]
+        user["User / Operator"]
+        api_client["API / CLI Client"]
+    end
+
+    subgraph Core["src/ — Application Core"]
+    end
+
+    subgraph Data["Data & Artifacts"]
+        datasets["Datasets · JSON · CSV"]
+    end
+
+    subgraph Charts["Metrics & Dashboard Charts"]
+        page_views["Page views chart"]
+        nav_sections["Navigation sections map"]
+        project_showcase["Project showcase grid"]
+        skills_timeline["Skills & experience timeline"]
+        contact_funnel["Contact conversion funnel"]
+        media_gallery["Media & assets gallery"]
+    end
+
+    user --> api_client
+    api_client --> Core
+    user -->|Web UI| dashboard_kpis
+    Core --> page_views
+    page_views --> user
+```
+
+### Data Flow & Charts Pipeline
+
+```mermaid
+flowchart LR
+    U["User / Event"] --> IN["Untrusted Input"]
+
+    subgraph Pipeline["Processing Pipeline"]
+        p0["Input"]
+        p1["Processing"]
+        p2["Output"]
+        p0 --> p1
+        p1 --> p2
+    end
+
+    subgraph Metrics["Metrics & Chart Feeds"]
+        page_views["Page views chart"]
+        nav_sections["Navigation sections map"]
+        project_showcase["Project showcase grid"]
+        skills_timeline["Skills & experience timeline"]
+        contact_funnel["Contact conversion funnel"]
+        media_gallery["Media & assets gallery"]
+    end
+
+    IN --> p0
+    p2 --> OUT["Authorized Output"]
+    OUT --> U
+    p2 --> page_views
+    page_views --> U
+```
+
+### Component & API Map
+
+```mermaid
+graph LR
+    subgraph App["src Components"]
+        main["main<br/>Main"]
+    end
+```
+
+### Application Page Map
+
+```mermaid
+mindmap
+  root((paapi))
+    Web UI
+      dashboard
+```
