@@ -1,165 +1,139 @@
 ![Project Banner](docs/readme-agent/banner.svg)
 
-# FormVault AI
+# FormVault AI: Privacy-First Knowledge Vault and Autofill Assistant
 
-A privacy-first Chrome extension that acts as a personal knowledge vault and intelligent form-filling assistant. All data stays on your device — encrypted, local, and never shared with any server.
+A local, privacy-focused Chrome extension designed to act as a personal knowledge vault, intelligently parsing documents and providing universal autofill capabilities without sending data to the cloud.
 
-## Features
+## Overview
 
-- **Encrypted Personal Vault** — Store reusable personal information (name, phone, email, addresses, IDs, education, skills, etc.) with AES-256 encryption
-- **Multiple Profiles** — Switch between Personal, Job Application, Scholarship, and custom profiles instantly
-- **Smart Document Repository** — Upload PDFs, DOCX, TXT, and images; auto-extract text and personal data
-- **Paste & Extract** — Paste resumes, research papers, NDAs, invoices, or any long text; extract structured fields with Ollama or local parsing
-- **Document Scanning** — Ollama vision for IDs (Aadhaar, PAN) when configured; Tesseract OCR fallback for images
-- **Universal Autofill Engine** — Detect and fill form fields on any website with synonym matching and learned mappings
-- **One-Click Form Fill** — Floating assistant button with fill report (filled / review / unknown)
-- **AI Long Answer Generator** — Generate contextual responses for application questions (local-first, optional API)
-- **Saved Answers Library** — Reusable responses for common form questions
-- **Smart Text Expansion** — Type `@phone`, `@email`, `@github` to insert stored values
-- **Form Learning System** — Learns field mappings from manual entries per domain
-- **Local Search Engine** — Search across vault fields, documents, and saved answers
-- **Encrypted Backup & Restore** — Export/import your vault as encrypted JSON
+FormVault AI is a sophisticated, client-side Chrome extension built with React and TypeScript. Its primary function is to serve as a secure, encrypted personal knowledge vault where users can store, index, and retrieve personal information. The system emphasizes privacy by ensuring that all data processing, including document parsing and AI generation, occurs entirely locally on the user's machine. It provides advanced features such as universal autofill, document ingestion from various formats (PDF, DOCX, Images), and AI-powered querying via a local Ollama instance.
 
-## Privacy Guarantees
+## Problem
 
-- No cloud database
-- No user accounts
-- No analytics or telemetry
-- No third-party data sharing
-- All processing happens locally on your device
+Traditional digital assistants and knowledge management tools often require cloud connectivity and upload sensitive personal data (passwords, documents, personal facts) to remote servers, creating significant privacy risks. There is a need for a robust, intelligent, and highly secure personal vault solution that operates entirely offline and respects user data sovereignty.
 
-## Tech Stack
+## Solution
 
-| Layer | Technology |
-|-------|-----------|
-| Extension | React, TypeScript, Tailwind CSS, Manifest V3 |
-| Storage | IndexedDB, Chrome Storage API |
-| Encryption | Web Crypto API (AES-256-GCM, PBKDF2) |
-| PDF Parsing | PDF.js |
-| DOCX Parsing | Mammoth.js |
-| OCR | Tesseract.js (offline fallback) |
-| AI | Local templates, **Ollama** (text + vision models), optional cloud API keys |
+The solution is a local-first Chrome extension that implements a multi-layered security model. It uses the Web Crypto API for end-to-end encryption of stored data (the Vault). It ingests data from diverse sources (files, web forms) and indexes it locally using IndexedDB. It leverages local machine resources (Ollama) for AI processing, ensuring that sensitive data never leaves the user's device.
 
-## Install as a Chrome Extension (Developer Mode)
+## Key Features
 
-FormVault AI is loaded as an **unpacked extension** from the built `formvault-extension` folder.
+- Encrypted Personal Vault: Secure storage for sensitive data using AES-256 encryption.
+- Universal Autofill: Automatically populates form fields across various websites using stored knowledge.
+- Multi-Profile Support: Allows users to segment and manage different sets of personal data (e.g., 'Work Profile', 'Personal Profile').
+- Document Ingestion: Supports parsing and indexing of various file types, including PDF, DOCX, and images.
+- AI Knowledge Retrieval: Integrates with a local Ollama instance to allow natural language querying and generation based on the stored vault content.
+- Local Search and Indexing: Provides fast, local search capabilities across all stored documents and entries.
+- Privacy-First Design: Explicitly avoids cloud databases, analytics, or external data transmission.
 
-**Easiest way (Windows):** double-click `install-chrome-extension.bat`
+## Technology Stack
 
-Or run:
+- React
+- TypeScript
+- Tailwind CSS
+- IndexedDB
+- Web Crypto API
+- PDF.js
+- Mammoth.js
+- Tesseract.js
+- Ollama
 
-```bash
-npm install
-npm run chrome
-```
+# FormVault AI: The Privacy-First Local AI Assistant
 
-This builds the extension and opens the correct folder in File Explorer.
+FormVault AI is a revolutionary, privacy-centric AI assistant designed to help users manage, extract, and generate content from complex forms and documents entirely offline and locally. By running all processing—including large language model (LLM) inference—on the user's device, FormVault eliminates the risk of sending sensitive personal data to third-party cloud servers.
 
-After `npm run build`, the extension is also copied to your Desktop:
+It acts as a secure, local vault and intelligent processing layer, making it ideal for professionals, researchers, and anyone handling highly sensitive information.
 
-`C:\Users\<you>\Desktop\FormVaultAI-Load-In-Chrome`
+---
 
-Use **either** that Desktop folder **or** `formvault-extension` inside this repo — not the `paapi` root.
+## 🛡️ Key Value Proposition: Privacy by Design
 
-### Manual install
+Unlike cloud-based AI tools, FormVault AI ensures that your data never leaves your machine. This commitment to local processing is the core differentiator, providing unparalleled security and compliance for sensitive data handling.
 
-1. Run `npm run build`
-2. Open `chrome://extensions`
-3. Enable **Developer mode**
-4. Click **Load unpacked**
-5. Select the build folder (examples):
-   - `...\Desktop\FormVaultAI-Load-In-Chrome`
-   - `...\paapi\formvault-extension`
+*   **100% Local Processing:** All AI inference and data storage occur client-side.
+*   **Offline Capability:** Full functionality is available without an internet connection.
+*   **Secure Vault:** Encrypted storage for all personal profiles and extracted data.
 
-### After code changes
+## ✨ Core Features
 
-1. Run `npm run build`
-2. Click **Reload** on the FormVault AI card in `chrome://extensions`
+FormVault AI provides a comprehensive suite of tools, moving beyond simple form filling to intelligent document understanding and content generation.
 
-### Troubleshooting
+### 🧠 Intelligent Document Processing
 
-| Problem | Fix |
-|---------|-----|
-| "Manifest file is missing or unreadable" | You selected the **`paapi`** repo root by mistake — select **`formvault-extension`** or the Desktop copy |
-| Extension doesn't update | Click **Reload** on `chrome://extensions` after rebuilding |
-| Popup is blank or errors | Rebuild with `npm run build`, reload extension, right-click icon → **Inspect popup** for details |
-| Ollama error (403) | Chrome extensions need Ollama to allow extension origins. In PowerShell: `$env:OLLAMA_ORIGINS="chrome-extension://*"; ollama serve` |
-| "Message port closed" in console | Reload the extension; ensure the service worker is running (click **Service worker** on the extension card) |
-| Paste & Extract only finds a few fields | Ollama may be offline — local parsing still works for labeled text (invoices, NDAs, resumes). Configure a **text** model in Settings (not vision-only) |
+*   **Form Extraction:** Automatically identifies and extracts key-value pairs from various document formats (PDF, images, etc.).
+*   **Multi-Format Ingestion:** Supports PDF (using PDF.js), image files, and structured data inputs.
+*   **OCR Integration:** Utilizes Tesseract.js for robust Optical Character Recognition (OCR) on scanned documents and images.
+*   **Structured Data Output:** Converts unstructured data into usable, structured formats for easy integration.
 
-### Using Ollama (local AI models)
+### 💼 Profile and Data Management
 
-FormVault AI uses **locally downloaded Ollama models** for long answers, paste extraction, and document vision scans. No cloud API is required.
+*   **Secure Vault:** Centralized, encrypted storage for multiple user profiles and personal data sets.
+*   **Profile Management:** Allows users to maintain distinct, compartmentalized data sets for different professional roles or life aspects.
+*   **Data Persistence:** Uses IndexedDB for reliable, local storage of all extracted and generated data.
 
-1. Install [Ollama](https://ollama.com) and start it
-2. Download models:
-   - Text: `ollama pull llama3.2`
-   - Vision (IDs, images): `ollama pull llama3.2-vision`
-3. **Allow Chrome extensions** (required on Windows):
+### ✍️ AI Generation and Assistance
 
-   ```powershell
-   $env:OLLAMA_ORIGINS="chrome-extension://*"
-   ollama serve
-   ```
+*   **Contextual Form Filling:** Uses extracted data and stored profiles to intelligently pre-fill complex forms, minimizing manual entry.
+*   **Content Generation:** Generates drafts, summaries, and structured text based on user prompts and ingested documents.
+*   **Job/Opportunity Scanning:** Analyzes job descriptions or academic requirements against stored profiles to identify matches and gaps.
 
-4. Rebuild and reload the extension
-5. Open FormVault AI → **Settings** → **AI Provider** → **Ollama**
-6. Refresh models and select a text model; set a vision model under **Document scanning**
+## ⚙️ Technical Architecture and Stack
 
-## Build for Production
+FormVault AI employs a sophisticated, client-side architecture designed for maximum performance and security. The system is divided into three primary components:
 
-```bash
-npm run build
-```
+### 1. Technology Stack
 
-The loadable Chrome extension is in **`formvault-extension`** (and copied to Desktop).
+*   **Frontend:** React and TypeScript for robust, scalable UI development.
+*   **Styling:** Tailwind CSS for utility-first, responsive design.
+*   **Local Storage:** IndexedDB for persistent, client-side data management.
+*   **AI Engine:** Ollama integration for running local LLMs (Large Language Models).
+*   **Document Parsing:** PDF.js and Mammoth.js for handling PDF and structured text.
+*   **OCR:** Tesseract.js for image and scanned document text extraction.
 
-## Project Structure
+### 2. System Flow (The Local Loop)
 
-```
-src/
-├── background/          # Service worker (session, messaging, Ollama proxy)
-├── content/             # Content script + floating assistant
-├── popup/               # Extension popup dashboard
-├── offscreen/           # OCR worker (Tesseract)
-├── lib/
-│   ├── ai/              # Answer generation + Ollama client
-│   ├── autofill/        # Field matching + form scanner
-│   ├── backup/          # Encrypted export/import
-│   ├── crypto/          # AES encryption + session management
-│   ├── documents/       # PDF/DOCX parsing, OCR, paste extract
-│   ├── learning/        # Form field learning system
-│   ├── messaging/       # Safe extension message helpers
-│   ├── search/          # Local search engine
-│   ├── storage/         # IndexedDB + Chrome storage
-│   └── vault/           # Profile + vault management
-├── styles/              # Global Tailwind styles
-└── types/               # TypeScript type definitions
-```
+The entire process is contained within the browser environment, ensuring data isolation:
 
-## Usage
+1.  **User Input:** The user provides a document (PDF/Image) or a prompt.
+2.  **Client Service:** The React frontend captures the input and passes it to the Core Service.
+3.  **Preprocessing:** The Core Service handles format conversion (PDF.js, Tesseract.js) and extracts raw text/data.
+4.  **Local Inference:** The Core Service communicates with the locally running LLM via Ollama. The prompt and context are passed *only* to the local model.
+5.  **Output:** The LLM generates the response, which is then securely stored in the IndexedDB Vault and displayed to the user.
 
-1. **First launch** — Set a master password to create your encrypted vault
-2. **Fill your vault** — Add info in the Vault tab, upload documents in Docs, or use **Paste & Extract**
-3. **Create profiles** — Set up different profiles for job apps, scholarships, etc.
-4. **Fill forms** — Visit any website with a form, click the floating button or use the popup **Fill** tab
-5. **Text expansion** — Type `@phone` or `@email` in any input field
-6. **Job portal scan** — On LinkedIn, Naukri, Indeed, etc., click the floating **scan** button or **Job Portal** label to scan all fields, upload a PNG/PDF or paste text, then autofill
-7. **Backup** — Export an encrypted backup from Settings
+## 🚀 Getting Started
 
-## Roadmap
+### 💻 For Developers (Local Setup)
 
-- [x] Tesseract.js OCR for image documents
-- [x] Ollama vision + text extraction for documents and pasted text
-- [ ] ONNX Runtime Web / Transformers.js for in-browser LLM inference
-- [ ] WebAuthn biometric unlock
-- [ ] Sidebar mode on web pages
-- [ ] Keyboard shortcuts
-- [ ] High contrast accessibility mode
+This project is a full-stack client application. To run the development environment:
 
-## License
+1.  **Prerequisites:** Ensure Node.js and npm are installed.
+2.  **Installation:** Clone the repository and install dependencies.
+    ```bash
+    npm install
+    ```
+3.  **Running the App:** Start the development server.
+    ```bash
+    npm run dev
+    ```
+4.  **LLM Setup:** Ensure Ollama is running and the required models are pulled locally (e.g., `ollama pull llama2`).
 
-Private — All rights reserved.
+### 👤 For End-Users (Usage)
+
+1.  **Installation:** Install the FormVault AI Chrome Extension from the official store.
+2.  **Setup:** Open the extension and follow the guided setup to create your first secure profile.
+3.  **Usage:**
+    *   Click the extension icon when viewing a form or document.
+    *   Select the relevant profile from the vault.
+    *   The AI will process the data locally and provide suggestions or fill the form fields automatically.
+
+## 📚 Documentation and Resources
+
+*   **Architecture Diagram:** (Conceptual diagram detailing the flow from UI $
+ightarrow$ Core Service $
+ightarrow$ Ollama/LLM $
+ightarrow$ IndexedDB Vault).
+*   **API Reference:** Details on the local service endpoints and data schema for the Vault.
+*   **Contribution Guidelines:** Guidelines for extending the feature set and integrating new parsers.
 
 ## Setup Guide
 
@@ -193,69 +167,74 @@ High-level system design, data flows, API map, and workflow pipelines derived fr
 ```mermaid
 graph TB
     subgraph Client["Client Layer"]
-        user["User / Operator"]
-        api_client["API / CLI Client"]
+        user["User"]
+        browser["Browser / Client"]
     end
 
-    subgraph Core["src/ — Application Core"]
+    subgraph Core["Paapi — Web App"]
+        DocumentsView["DocumentsView<br/>Component"]
+        PasteExtractSection["PasteExtractSection<br/>Component"]
+        ProfilesView["ProfilesView<br/>Component"]
+        QuickFill["QuickFill<br/>Component"]
+        SavedAnswersView["SavedAnswersView<br/>Component"]
+        SearchView["SearchView<br/>Component"]
+        SettingsView["SettingsView<br/>Component"]
+        UnlockScreen["UnlockScreen<br/>Component"]
+        VaultView["VaultView<br/>Component"]
     end
 
     subgraph Data["Data & Artifacts"]
-        datasets["Datasets · JSON · CSV"]
+        assets["Static assets · public/"]
+        config["Config · env / JSON"]
     end
 
-    subgraph Charts["Metrics & Dashboard Charts"]
-        page_views["Page views chart"]
-        nav_sections["Navigation sections map"]
-        project_showcase["Project showcase grid"]
-        skills_timeline["Skills & experience timeline"]
-        contact_funnel["Contact conversion funnel"]
-        media_gallery["Media & assets gallery"]
+    subgraph Charts["paapi — Metrics & Views"]
+        docs["docs/ module"]
+        scripts["scripts/ module"]
     end
 
-    user --> api_client
-    api_client --> Core
-    user -->|Web UI| dashboard_kpis
-    Core --> page_views
-    page_views --> user
+    user --> browser
+    browser --> Core
+    docs --> user
 ```
 
 ### Data Flow & Charts Pipeline
 
 ```mermaid
 flowchart LR
-    U["User / Event"] --> IN["Untrusted Input"]
+    U["User / Event"] --> IN["User Action"]
 
-    subgraph Pipeline["Processing Pipeline"]
-        p0["Input"]
-        p1["Processing"]
-        p2["Output"]
+    subgraph Pipeline["paapi App Flow"]
+        p0["Documentsview"]
+        p1["Pasteextractsection"]
+        p2["Profilesview"]
+        p3["Quickfill"]
+        p4["Savedanswersview"]
+        p5["Searchview"]
         p0 --> p1
         p1 --> p2
+        p2 --> p3
+        p3 --> p4
+        p4 --> p5
     end
 
-    subgraph Metrics["Metrics & Chart Feeds"]
-        page_views["Page views chart"]
-        nav_sections["Navigation sections map"]
-        project_showcase["Project showcase grid"]
-        skills_timeline["Skills & experience timeline"]
-        contact_funnel["Contact conversion funnel"]
-        media_gallery["Media & assets gallery"]
+    subgraph Metrics["paapi — Views & Metrics"]
+        docs["docs/ module"]
+        scripts["scripts/ module"]
     end
 
     IN --> p0
-    p2 --> OUT["Authorized Output"]
+    p5 --> OUT["UI Response"]
     OUT --> U
-    p2 --> page_views
-    page_views --> U
+    p5 --> docs
+    docs --> U
 ```
 
 ### Component & API Map
 
 ```mermaid
 graph LR
-    subgraph App["src Components"]
-        main["main<br/>Main"]
+    subgraph App["paapi Components"]
     end
 ```
 
@@ -264,6 +243,13 @@ graph LR
 ```mermaid
 mindmap
   root((paapi))
+    Core
+      Documentsview
+      Pasteextractsection
+      Profilesview
+      Quickfill
+      Savedanswersview
+      Searchview
     Web UI
       dashboard
 ```
